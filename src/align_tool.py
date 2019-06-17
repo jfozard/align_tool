@@ -24,6 +24,7 @@ import argparse
 import time
 
 import scipy.ndimage as nd
+import skimage.segmentation
 
 from import_tiff import load_tiff
 
@@ -36,6 +37,7 @@ def scale(x):
     return np.diag(np.append(x,1))
 
 def to_qimg(m):
+    m = m.astype(np.uint8)
     m = np.ascontiguousarray(np.dstack([m,m,m]))
     height, width, channels = m.shape
     bytesPerLine = width*3
@@ -87,6 +89,33 @@ class Stack(object):
     def get_transform2d(self):
         m = self.user_transform.matrix.dot(self.default_transform.matrix)
         return m[1:,1:].T.flatten()
+
+
+class SegmentedStack(object):
+    def __init__(self, data, spacing):
+
+        print(data.shape)
+        if len(data.shape)>3:
+            data = 256*256*data[...,0]+256*data[...,1]+data[...,2]
+        self.data = data
+        self.spacing = spacing
+        self.shape = data.shape
+        self.default_transform = AffineTransform(scale(self.spacing))
+        self.user_transform = AffineTransform(np.eye(4))
+        self.make_maxproj()
+        self.visible = True
+        self.transparent = False
+        
+    def make_maxproj(self):
+        borders = skimage.segmentation.find_boundaries(self.data)
+        self.maxproj = 255*np.max(borders, axis=0)
+        print(self.maxproj.shape)
+
+    def get_transform2d(self):
+        m = self.user_transform.matrix.dot(self.default_transform.matrix)
+        return m[1:,1:].T.flatten()
+
+
     
 class WorldController(object):
     def __init__(self):
@@ -98,6 +127,15 @@ class WorldController(object):
         data, spacing = load_tiff(filename)
         print('load_stack', filename, data.shape, spacing)
         self.stacks.append(Stack(data, spacing[::-1]))
+        if self.sbar:
+            self.sbar.addObject(filename, self.stacks[-1])
+        if self.rw:
+            self.rw.add_stack(self.stacks[-1])
+
+    def load_segmented_stack(self, filename):
+        data, spacing = load_tiff(filename)
+        print('load_stack', filename, data.shape, spacing)
+        self.stacks.append(SegmentedStack(data, spacing[::-1]))
         if self.sbar:
             self.sbar.addObject(filename, self.stacks[-1])
         if self.rw:
@@ -276,6 +314,7 @@ def point_to_np(p):
 class StackItem(QtWidgets.QGraphicsPixmapItem):
     def __init__(self, stack):
         self.stack = stack
+        print(stack.maxproj.shape)
         self.pm = QtGui.QPixmap.fromImage(to_qimg(stack.maxproj))
         QtWidgets.QGraphicsPixmapItem.__init__(self, self.pm)
 
@@ -382,6 +421,15 @@ class MainWindow(QtWidgets.QMainWindow):
             filename = str(r)
             self.wc.load_stack(filename)
 
+
+    def action_load_segmented_stack(self):
+        r = QtWidgets.QFileDialog.getOpenFileName(self, 'Segmented Stack', '.', 'TIFF files (*.tif)')
+        if type(r)==tuple:
+            r = r[0]
+        if r:
+            filename = str(r)
+            self.wc.load_segmented_stack(filename)
+
     def quit_action(self):
         self.close()
         
@@ -390,11 +438,14 @@ class MainWindow(QtWidgets.QMainWindow):
         fileMenu = mainMenu.addMenu('&File')
         load_action = QtWidgets.QAction('&Open Stack ...', self)
         load_action.setShortcut('Ctrl+O')
+        load_segmented_action = QtWidgets.QAction('Open Se&gmented Stack ...', self)
         quit_action = QtWidgets.QAction('&Quit', self)
         quit_action.setShortcut('Ctrl+Q')
         fileMenu.addAction(load_action)
+        fileMenu.addAction(load_segmented_action)
         fileMenu.addAction(quit_action)
         load_action.triggered.connect(self.action_load_stack)
+        load_segmented_action.triggered.connect(self.action_load_segmented_stack)
         #save_action.triggered.connect(self.action_write_label_stack)
         quit_action.triggered.connect(self.quit_action)
                                                                                 

@@ -59,8 +59,10 @@ def load_tiff(fn, seq=0):
     x_sp = float(x_sp[1])/x_sp[0]*u_sc
     y_sp = float(y_sp[1])/y_sp[0]*u_sc
 #    return np.transpose(data, (1,2,0)), (x_sp, y_sp, z_sp)
+    print(data.shape, data.dtype)
     if len(data.shape)==2:
         data = data[np.newaxis,:,:]
+
 #    if len(data.shape)==4:
 #        data = np.max(data, axis=3)
     return data, (x_sp, y_sp, z_sp)
